@@ -1,0 +1,396 @@
+---
+title: "Day 3 Asynchronous Activity: Explore Response Patterns in Latent Class Analysis"
+author: '*Adam Garber & MM4DBER Team*'
+subtitle: "`MM4DBER 2024`" 
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE)
+library(linguisticsdown)
+```
+
+# --------------------------------------------------------------------------------------
+
+## Preparation
+
+# --------------------------------------------------------------------------------------
+
+## Data source: Longitudinal Study of American Youth, **Science Attitudes** 
+
+[See documentation about the LSAY here.](https://www.lsay.org/)
+
+# --------------------------------------------------------------------------------------
+
+Load packages: 
+
+> `NOTE:` To install new packages (e.g., `DT`, `plotly`, `gg3D`, `gganimate`, `viridis`) make a change to this script file and then `SAVE` the document. A yellow banner should appear at the top of the RSTUDIO window asking if you would like to install packages (if any of these packages does not install this will not interfere with completing the activity)
+
+```{r, eval=TRUE}
+
+library(tidyverse)
+library(glue)
+library(MplusAutomation)
+library(here)
+library(janitor)
+library(DT)
+library(gt)
+library(plotly)
+library(gg3D)
+library(gganimate)
+library(viridis)
+
+```
+
+# --------------------------------------------------------------------------------------
+
+## Exploring observed response patterns
+
+# --------------------------------------------------------------------------------------
+
+```{r, eval=TRUE}
+
+lsay_data <- read_csv("https://garberadamc.github.io/project-site/data/lca_lsay_sci.csv", 
+                      na = c("9999", "9999.00")) %>%                                     
+  clean_names() %>%                                                                      
+  dplyr::select(1:5, Enjoy = ab39m, Useful = ab39t,                                      
+                     Logical = ab39u, Job = ab39w, Adult = ab39x)                        
+
+
+```
+
+Use {`DT::datatable()`} to take a look at the data
+```{r, eval=TRUE}
+
+datatable(lsay_data, rownames = FALSE, filter="top",
+          options = list(pageLength = 5, scrollX=T) )
+```
+
+```{r, echo=FALSE, eval=TRUE, out.width = "65%", out.height= "65%", fig.pos="h"}
+
+include_graphics2("https://garberadamc.github.io/project-site/figures/LCA_Diagram_SEMLAB8.png")
+```
+
+*Figure*. Path diagram of science attitude indicators.
+
+# --------------------------------------------------------------------------------------
+
+## Activity 1: Run a 4-class mixture model 
+
+1. Selected syntax from the code below is `missing`
+2. The missing syntax will change with each data context- and therefore is important to practice!
+3. To make missing code easier to find it has been marked below with asterisks (`*`)
+4. For a similar example, look at the [Day2 Asynch Handout - Under header; "Observed Response Patterns"](https://mm4dber.github.io/Intro_to_LCA.html)
+    - **NOTE**: This substantive example is `different` (e.g., item labels)
+
+
+Save response frequencies for the 4 class model with `response is _____.dat`. 
+```{r, eval=FALSE}
+
+patterns  <- mplusObject(
+  
+  TITLE = "C4 LCA - Save response patterns", 
+  
+  VARIABLE = 
+  "categorical = ********; 
+   usevar = ********;
+    
+   classes = c(*);",
+  
+  ANALYSIS = 
+   "estimator = mlr; 
+    type = mixture;
+    starts = ******;",
+  
+  SAVEDATA = 
+   "File=3step_savedata.dat;
+    Save=cprob;
+    Missflag= 999;
+    response is resp_patterns.dat; ",
+  
+  OUTPUT = "sampstat residual patterns tech10 tech11 tech14",
+  
+  PLOT = 
+    "type = plot3; 
+    series = Enjoy-Adult(*);",
+  
+  usevariables = colnames(*******),
+  rdata = *******)
+
+patterns_fit <- mplusModeler(patterns,
+                dataout=here("mplus_files", "LSAY.dat"),
+                modelout=here("mplus_files", "patterns.inp") ,
+                check=TRUE, run = TRUE, hashfilename = FALSE)
+```
+
+# --------------------------------------------------------------------------------------
+
+## Create a Response Pattern Table & Take a Look at the Patterns
+
+# --------------------------------------------------------------------------------------
+
+Read in observed respnse pattern data
+```{r}
+
+patterns <- read_table2(here("mplus_files", "resp_patterns.dat"),
+                        col_names=FALSE, na = "*")                                                   
+
+colnames(patterns) <- c("Frequency", "ENJOY", "USEFUL", "LOGICAL", "JOB", "ADULT",                   
+                      "CPROB1", "CPROB2", "CPROB3", "CPROB4", "C_MODAL")                             
+
+```
+
+Order responses by highest frequency 
+```{r,eval=TRUE}
+
+order_highest <- patterns %>% 
+  arrange(desc(Frequency)) 
+
+```
+
+Order responses by `C_MODAL` 
+```{r,eval=TRUE}
+loop_cond  <- lapply(1:4, function(k) {       
+order_cond <- patterns %>%                    
+  filter(C_MODAL == k) %>%                    
+  arrange(desc(Frequency)) %>% 
+  head(5)               
+  })                                          
+
+table_data1 <- bind_rows(loop_cond) %>%       
+  as.data.frame()
+
+table_data2 <-  rbind(order_highest[1:5,], table_data1) 
+```
+
+
+\newpage
+
+Use `{gt}` to make a nicely formatted table
+```{r}
+
+table_data2 %>% 
+  gt() %>%
+    tab_header(
+    title = md("**Observed Response Patterns**"),
+    subtitle = md("&nbsp;")) %>% 
+    tab_source_note(
+    source_note = md("Data Source: **Longitudinal Study of American Youth.**")) %>%
+    cols_label(
+    ENJOY = "Enjoy",
+    USEFUL = "Useful",
+    LOGICAL = "Logical",
+    JOB = "Job",
+    ADULT = "Adult",
+    CPROB1 = html("Pk=1"),
+    CPROB2 = html("Pk=2"),
+    CPROB3 = html("Pk=3"),
+    CPROB4 = html("Pk=4"),
+    C_MODAL = md("*k*")) %>% 
+  tab_row_group(
+    group = "Unconditional response patterns",
+    rows = 1:5) %>%
+  tab_row_group(
+    group = "k=1 conditional response patterns",
+    rows = 6:10) %>%
+  tab_row_group(
+    group = "k=2 conditional response patterns",
+    rows = 11:15)  %>%
+  tab_row_group(
+    group = "k=3 conditional response patterns",
+    rows = 16:20) %>%
+  tab_row_group(
+    group = "k=4 conditional response patterns",
+    rows = 21:25) %>%
+    row_group_order(
+      groups = c("Unconditional response patterns",
+                 "k=1 conditional response patterns",
+                 "k=2 conditional response patterns",
+                 "k=3 conditional response patterns",
+                 "k=4 conditional response patterns")) %>% 
+  tab_options(column_labels.font.weight = "bold")
+
+
+```
+
+
+# --------------------------------------------------------------------------------------
+
+## Activity 2: Calculate Average Posterior Probabilities (Classification Error)
+
+> The goal of this activity is to provide an opportunity for you to “get your hands into” the posterior probabilities and get practice calculating the Average Posterior Probabilities (AvePP) for each class. Specifically, we are going to recreate this table from the Mplus output. One way to think of the AvePP values are as the class-specific classification errors in the model.
+
+**Instructions:**
+
+1. Find the `AvePP` table in the Mplus output file under the header "Average Latent Class Probabilities for Most Likely Latent Class Membership (Row) by Latent Class (Column)". We are going to replicate the values from this table. 
+
+```{r, echo=FALSE, eval=TRUE, out.width = "65%", out.height= "65%", fig.pos="h"}
+
+include_graphics2(here("figures", "AvePP_LCA_C4.png"))
+```
+
+2. The pattern data can be found in the Excel spreadsheet (`PATTERNS_BY_C.xlsx`) ordered by class in each respective tab.
+3. Each row in the spreadsheet represents a specific response pattern. Thus we need to weight each pattern by the frequency to get the total error across all observations. 
+
+```{r, echo=FALSE, eval=TRUE, out.width = "65%", out.height= "65%", fig.pos="h"}
+
+include_graphics2(here("figures", "C1_Calc_Example.png"))
+```
+
+**Steps for estimating the Average Posterior Probabilities (AvePP):**
+
+1. We will begin by computing the AvePP values for observations in MODAL class 1 (Most Likely Class Membership):
+    a. Go to the second tab spreadsheet in the file named `C = 1`
+
+2. Compute the weighted error for each response pattern by class:
+    a. In the first input column and row (shaded yellow; cell `N2`) multiply the frequency for that specific response pattern by the posterior probability for class 1 (CPROB1).
+    b. The weighted error will be repeated for each response pattern (down rows in the column)
+    c. Repeat the weighted error calculation for each of the remaining classes (`CPROB2`, `CPROB3`, `CPROB4`)
+3. Compute the `Total Frequency Count` by summing the frequency column
+4. Take the sum of each of the weighted error column computed in step 2 to compute the total weighted error
+    a. Divide the total weighted error by the total frequencies count
+5. These four values are the first row of the AvePP table from the Mplus output
+6. OPTIONAL: Repeat steps 1 – 4 to compute the values in the remaining 3 rows of the AvePP table (i.e., for observations where most likely class membership are classes 2 – 4. Check to make sure the values correspond with the Mplus output.
+
+
+**Follow up questions:**
+
+1.	Look at those who were assigned to class 1:
+    a. Looking at the tab C=1, what column do you think would have the largest weighted posterior probability (cprob)?  Why?
+    b. What is the response pattern with the largest CPROB1? 
+    c. What is the response pattern with the smallest CPROB1? 
+    d. How about for class 2?
+    
+2.	How should we interpret the diagonal values of the AVEpp table?
+    a. How should we interpret the off-diagonals?
+
+
+# --------------------------------------------------------------------------------------
+
+## Visualizing observed response patterns
+
+# --------------------------------------------------------------------------------------
+
+Order response patterns (rows) by modal assignment (*K*)
+```{r, eval=TRUE}
+
+order_modal <- patterns %>% 
+  arrange(desc(C_MODAL)) %>%
+  rownames_to_column() %>% 
+  rename('pat_num' = "rowname") %>%
+  drop_na(ENJOY:ADULT)
+
+```
+
+Prepare plot data
+```{r, eval=TRUE}
+
+p1_long <- order_modal %>% 
+  dplyr::select(pat_num:ADULT, C_MODAL) %>% 
+  pivot_longer(`ENJOY`:`ADULT`,  
+               names_to = "var", 
+               values_to = "value") %>%  
+  mutate(obs = rep(1:32, each=5)) %>%
+  mutate(Class = factor(C_MODAL)) %>% 
+  mutate(var = ordered(var,
+                      levels = c("ENJOY","USEFUL","LOGICAL","JOB","ADULT"))) %>%
+  select(-pat_num, -C_MODAL)
+
+out_c4 <- readModels(here("mplus_files"),
+                     filefilter = "patterns", quiet = TRUE)
+
+# extract posterior probabilities 
+probs_c4 <- as.data.frame(
+  out_c4[["gh5"]][["means_and_variances_data"]]
+  [["estimated_probs"]][["values"]]                      
+  [seq(2, 10, 2),]) 
+
+rownames(probs_c4) <- c("ENJOY","USEFUL","LOGICAL","JOB","ADULT")
+
+long_c4 <- probs_c4 %>% rownames_to_column() %>%
+  rename('var' = "rowname") %>%
+  pivot_longer(`V1`:`V4`, # The columns I'm gathering together
+               names_to = "c", # new column name for existing names
+               values_to = "value") %>% # new column name to store values
+  mutate(Class = rep(1:4,5)) %>%
+  arrange(Class) %>% 
+  mutate(obs = rep(33:36,each=5)) %>%
+  mutate(Frequency = rep(c(829,782,619,833),each=5)) %>%
+  mutate(var = ordered(var,
+                      levels = c("ENJOY","USEFUL","LOGICAL","JOB","ADULT"))) %>%
+  select(6,1,3,5,4)
+
+p2_long <- rbind(p1_long, long_c4) %>% 
+  mutate(Class = as.numeric(Class))
+ 
+```
+
+
+Visualize observed response patterns with {`plotly`}. This plot is interactive!
+```{r, eval=TRUE}
+gg <- ggplot(p2_long, aes(x=var, y=value, color = Class, size=Frequency)) +
+  geom_line(aes(as.numeric(var), frame = obs)) +
+  scale_color_viridis() + labs(x="Indicator", y= "Probability")
+
+ggplotly(gg) %>%  animation_opts(frame = 1000, transition = 0) %>%
+  animation_slider(currentvalue =
+                     list(prefix = "Pattern ", font = list(color="red")))
+
+```
+
+
+Make a 3D plot with packages {`ggplot2`}, {`gg3D`}, and {`gganimate`}.
+```{r, eval=TRUE}
+
+theta= 170    # change perspective (tilt)
+phi=40        # change perspective (rotation)
+
+resp3d <- ggplot(p1_long, aes(x=as.numeric(var),
+                              y=as.numeric(value),
+                              z = as.numeric(obs)),
+                 alpha = .8) +            
+  axes_3D(theta=theta, phi=phi) +
+  stat_3D(theta=theta, phi=phi, geom="path",
+          aes(colour = Class, size = Frequency), alpha = .8) +
+  scale_color_manual(values=c("#FDE725FF", "#DE7065FF", "#238A8DFF", "#482677FF")) +
+  theme_void() +
+  annotate("text", x = -.3, y = 0.05, label = "Indicators ") +
+  annotate("text", x = .35, y = -.4, label = "Probability") +
+  annotate("text", x = .25, y = .42, label = "Pattern") +
+  annotate("text", x = .2, y = 0, label = "0.0") +
+  annotate("text", x = .34, y = -.33, label = "1.0") +
+  annotate("text", x = -.05, y = 0, angle = 6,
+           label = "Enjoy - Useful - Logical - Job - Adult") +
+  transition_states(obs, transition_length=1, state_length=5) +
+  shadow_mark(alpha = .1,) +
+  labs(title = "Observed response pattern = {closest_state}")
+
+
+animate(resp3d, fps = 2)
+```
+
+```{r, eval=FALSE}
+anim_save(here("13-response-patterns", "figures", "responses_3d_anim.gif"),
+          height = 6, width = 8, dpi = "retina")
+```
+
+
+## References
+
+Drew A. Linzer, Jeffrey B. Lewis (2011). poLCA: An R Package for Polytomous Variable Latent Class Analysis. Journal of Statistical Software, 42(10), 1-29. URL http://www.jstatsoft.org/v42/i10/.
+
+Hallquist, M. N., & Wiley, J. F. (2018). MplusAutomation: An R Package for Facilitating Large-Scale Latent Variable Analyses in Mplus. Structural equation modeling: a multidisciplinary journal, 25(4), 621-638.
+
+Miller, J. D., Hoffer, T., Suchner, R., Brown, K., & Nelson, C. (1992). LSAY codebook. Northern Illinois University.
+
+Muthén, B. O., Muthén, L. K., & Asparouhov, T. (2017). Regression and mediation analysis using Mplus. Los Angeles, CA: Muthén & Muthén.
+
+Muthén, L.K. and Muthén, B.O. (1998-2017).  Mplus User’s Guide.  Eighth Edition. Los Angeles, CA: Muthén & Muthén
+
+R Core Team (2017). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL http://www.R-project.org/
+
+Wickham et al., (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+
+# --------------------------------------------------------------------------------------
